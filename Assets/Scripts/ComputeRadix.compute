@@ -1,0 +1,10 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel HistogramKernel
+#pragma kernel ScanKernel
+
+
+[numthreads(64,1,1)]
+void HistogramKernel (uint3 id : SV_DispatchThreadID,uint3 groupThreadID : SV_GroupThreadID, uint3 groupID : SV_GROUPID)
+{
+
+}
