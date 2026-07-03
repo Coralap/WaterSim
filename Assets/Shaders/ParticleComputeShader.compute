@@ -13,6 +13,8 @@
 struct Particle
 {
     float3 position;
+    float3 lastPosition;
+
     float3 velocity;
 
     float3 acceleration;
@@ -265,15 +267,52 @@ void CalculateForces (uint3 id : SV_DispatchThreadID)
         
     particles[id.x].acceleration = preasureForce; 
 }
+// [numthreads(64,1,1)]
+// void UpdatePositions (uint3 id : SV_DispatchThreadID)
+// {
+//     if(id.x>=_particleCount)
+//         return;
+//     particles[id.x].acceleration.y += _gravityForce;
+//     particles[id.x].velocity += particles[id.x].acceleration * _deltaTime;
+//     particles[id.x].position += particles[id.x].velocity * _deltaTime;
+
+//         // Boundary Collisions
+//         if (abs(particles[id.x].position.y) + _particleRadius > _halfHeight)
+//         {
+//             particles[id.x].position.y = sign(particles[id.x].position.y) * (_halfHeight - _particleRadius);
+//             particles[id.x].velocity.y *= -_dampingForce;
+//         }
+//         if (abs(particles[id.x].position.x) + _particleRadius > _halfWidth)
+//         {
+//             particles[id.x].position.x = sign(particles[id.x].position.x) * (_halfWidth - _particleRadius);
+//             particles[id.x].velocity.x *= -_dampingForce;
+
+//             particles[id.x].velocity.y *= 0.5f;
+
+//         }
+//     float speed = length(particles[id.x].velocity);
+
+//     float normalized_speed = saturate(speed / _maxSpeed); 
+//     if(normalized_speed>0.5f)
+//         colors[id.x] = lerp(yellow, red, normalized_speed);
+//     else
+//         colors[id.x] = lerp(blue, yellow, normalized_speed);
+
+//     positions[id.x] = particles[id.x].position;
+
+// }
+
+/*started switch to a more position based system. following: https://www.ligum.umontreal.ca/Clavet-2005-PVFS/pvfs.pdf
+for inspo and the step order.
+*/
 [numthreads(64,1,1)]
 void UpdatePositions (uint3 id : SV_DispatchThreadID)
 {
     if(id.x>=_particleCount)
         return;
-    particles[id.x].acceleration.y += _gravityForce;
-    particles[id.x].velocity += particles[id.x].acceleration * _deltaTime;
-    particles[id.x].position += particles[id.x].velocity * _deltaTime;
-
+    particles[id.x].velocity += float3(0,_gravityForce,0) * _deltaTime;
+    particles[id.x].lastPosition = particles[id.x].position;
+    particles[id.x].position += _deltaTime * particles[id.x].velocity;
         // Boundary Collisions
         if (abs(particles[id.x].position.y) + _particleRadius > _halfHeight)
         {
@@ -297,8 +336,12 @@ void UpdatePositions (uint3 id : SV_DispatchThreadID)
         colors[id.x] = lerp(blue, yellow, normalized_speed);
 
     positions[id.x] = particles[id.x].position;
+    particles[id.x].velocity = (particles[id.x].position-particles[id.x].lastPosition)/_deltaTime;
 
 }
+
+
+
 
 
 

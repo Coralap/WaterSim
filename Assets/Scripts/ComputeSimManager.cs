@@ -83,7 +83,7 @@ public class ComputeSimManager : MonoBehaviour
     void Start()
     {
         //initialize buffers with size of particles.
-        particleBuffer = new ComputeBuffer(particleCount,52);
+        particleBuffer = new ComputeBuffer(particleCount,64);
         positionBuffer = new ComputeBuffer(particleCount,12);
         colorBuffer = new ComputeBuffer(particleCount,16);
 
@@ -133,14 +133,15 @@ public class ComputeSimManager : MonoBehaviour
 
                 float posX = startX + (col * spacingX);
                 float posY = startY + (row * spacingY);
-
+                Vector3 newPos = new Vector3(posX, posY, 0f);
                 particles[i] = new Particle
                 {
-                    position = new Vector3(posX, posY, 0f),
+                    position = newPos,
                     velocity = Vector3.zero,
                     acceleration = Vector3.zero,
                     density = 0f,
-                    preasure = 0f
+                    preasure = 0f,
+                    lastPosition = newPos
                 };
                 positions[i] = particles[i].position;
 
@@ -240,13 +241,13 @@ public class ComputeSimManager : MonoBehaviour
 
         int groups = Mathf.CeilToInt(particleCount / 64f);
 
-        particleComputeShader.Dispatch(updateCellsKernel,groups,1,1);
-        OrganzieCells();
+        //particleComputeShader.Dispatch(updateCellsKernel,groups,1,1);
+        //OrganzieCells();
         particleComputeShader.SetBuffer(densityKernel, "cellStarts", cellStartsBuffer);
         particleComputeShader.SetBuffer(forceKernel, "cellStarts", cellStartsBuffer);
 
-        particleComputeShader.Dispatch(densityKernel,groups,1,1);
-        particleComputeShader.Dispatch(forceKernel,groups,1,1);
+       // particleComputeShader.Dispatch(densityKernel,groups,1,1);
+       // particleComputeShader.Dispatch(forceKernel,groups,1,1);
         particleComputeShader.Dispatch(moveKernel,groups,1,1);
 
         particleMaterial.SetBuffer("colorBuffer", colorBuffer);
