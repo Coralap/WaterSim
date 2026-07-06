@@ -329,9 +329,9 @@ MonoBehaviour:
   timeStep: 0.01
   gravityForce: -9.81
   dampingForce: 0.3
-  targetDensity: 4.5
+  targetDensity: 5.2
   nearPreasureMultiplier: 50
-  preasureMultiplier: 350
+  preasureMultiplier: 27.44
   viscosityStrength: 0.3
   maxSpeed: 35
   particleMaterial: {fileID: 2100000, guid: 559085179ed2ed941a6bcd5807aa06c8, type: 2}

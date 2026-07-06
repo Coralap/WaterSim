@@ -74,9 +74,11 @@ public class ComputeSimManager : MonoBehaviour
     private int[] IdToCellArray;
 
     int densityKernel;
-    int forceKernel;
-    int moveKernel;
+    int gravityKernel;
+    
+    int relaxKernel;
 
+    int simKernel;
     int updateCellsKernel;
 
 
@@ -176,29 +178,39 @@ public class ComputeSimManager : MonoBehaviour
         colorBuffer.SetData(colors);
 
         densityKernel = particleComputeShader.FindKernel("CalculateDensity");
-        forceKernel = particleComputeShader.FindKernel("CalculateForces");
-        moveKernel = particleComputeShader.FindKernel("UpdatePositions");
+
+
+        gravityKernel = particleComputeShader.FindKernel("ApplyGravity");
+        
+        relaxKernel = particleComputeShader.FindKernel("DensityRelaxationDisplacement");
+
+
+        simKernel = particleComputeShader.FindKernel("SimulationStep");
+
         updateCellsKernel = particleComputeShader.FindKernel("UpdateCells");
 
-        particleComputeShader.SetBuffer(moveKernel, "colors", colorBuffer);
+
+
+        particleComputeShader.SetBuffer(simKernel, "colors", colorBuffer);
 
 
 
         particleComputeShader.SetBuffer(densityKernel, "particles", particleBuffer);
-        particleComputeShader.SetBuffer(forceKernel, "particles", particleBuffer);
-        particleComputeShader.SetBuffer(moveKernel, "particles", particleBuffer);
+        particleComputeShader.SetBuffer(gravityKernel, "particles", particleBuffer);
+        particleComputeShader.SetBuffer(relaxKernel, "particles", particleBuffer);
+        particleComputeShader.SetBuffer(simKernel, "particles", particleBuffer);
 
 
 
         particleComputeShader.SetBuffer(densityKernel, "flatCell", flatCellBuffer);
         particleComputeShader.SetBuffer(densityKernel, "IdToCell", IdToCellBuffer);
 
-        particleComputeShader.SetBuffer(forceKernel, "flatCell", flatCellBuffer);
-        particleComputeShader.SetBuffer(forceKernel, "IdToCell", IdToCellBuffer);
+        particleComputeShader.SetBuffer(relaxKernel, "flatCell", flatCellBuffer);
+        particleComputeShader.SetBuffer(relaxKernel, "IdToCell", IdToCellBuffer);
+
+        particleComputeShader.SetBuffer(simKernel, "positions", positionBuffer);
 
 
-
-        particleComputeShader.SetBuffer(moveKernel, "positions", positionBuffer);
 
         particleComputeShader.SetBuffer(updateCellsKernel, "positions", positionBuffer);
         particleComputeShader.SetBuffer(updateCellsKernel, "flatCell", flatCellBuffer);
@@ -241,15 +253,19 @@ public class ComputeSimManager : MonoBehaviour
 
         int groups = Mathf.CeilToInt(particleCount / 64f);
 
-        //particleComputeShader.Dispatch(updateCellsKernel,groups,1,1);
-        //OrganzieCells();
+
         particleComputeShader.SetBuffer(densityKernel, "cellStarts", cellStartsBuffer);
-        particleComputeShader.SetBuffer(forceKernel, "cellStarts", cellStartsBuffer);
+        particleComputeShader.SetBuffer(relaxKernel, "cellStarts", cellStartsBuffer);
 
-       // particleComputeShader.Dispatch(densityKernel,groups,1,1);
-       // particleComputeShader.Dispatch(forceKernel,groups,1,1);
-        particleComputeShader.Dispatch(moveKernel,groups,1,1);
+        particleComputeShader.Dispatch(gravityKernel,groups,1,1);
+        particleComputeShader.Dispatch(updateCellsKernel,groups,1,1);
+        OrganzieCells();
 
+        particleComputeShader.Dispatch(densityKernel,groups,1,1);
+
+        particleComputeShader.Dispatch(relaxKernel,groups,1,1);
+
+        particleComputeShader.Dispatch(simKernel,groups,1,1);
         particleMaterial.SetBuffer("colorBuffer", colorBuffer);
 
         particleMaterial.SetBuffer("particleBuffer", positionBuffer);
