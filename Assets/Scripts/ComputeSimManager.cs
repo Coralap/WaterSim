@@ -85,8 +85,9 @@ public class ComputeSimManager : MonoBehaviour
     void Start()
     {
         //initialize buffers with size of particles.
-        particleBuffer = new ComputeBuffer(particleCount,64);
+        particleBuffer = new ComputeBuffer(particleCount,52);
         positionBuffer = new ComputeBuffer(particleCount,12);
+
         colorBuffer = new ComputeBuffer(particleCount,16);
 
         smoothingRadius = particleRadius*6;
@@ -140,9 +141,10 @@ public class ComputeSimManager : MonoBehaviour
                 {
                     position = newPos,
                     velocity = Vector3.zero,
-                    acceleration = Vector3.zero,
                     density = 0f,
                     preasure = 0f,
+                    nearDensity = 0f,
+                    nearPreasure = 0f,
                     lastPosition = newPos
                 };
                 positions[i] = particles[i].position;

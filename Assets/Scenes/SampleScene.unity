@@ -265,7 +265,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1010216995}
-  - component: {fileID: 1010216996}
   - component: {fileID: 1010216997}
   m_Layer: 0
   m_Name: SimManager
@@ -289,30 +288,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1010216996
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1010216994}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: debcf0942ddf85e45acec2ec1362a00b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  gravityForce: -9.81
-  dampingForce: 0.3
-  smoothingRadius: 1.5
-  targetDensity: 4
-  preasureMultiplier: 200
-  viscosityStrength: 0.2
-  particleMaterial: {fileID: 2100000, guid: 559085179ed2ed941a6bcd5807aa06c8, type: 2}
-  particleMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
-  particleRadius: 0.15
-  areaWidth: 20
-  aeraHeight: 10
-  particleCount: 500
 --- !u!114 &1010216997
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -328,12 +303,12 @@ MonoBehaviour:
   particleComputeShader: {fileID: 7200000, guid: 0980185ddefd7a744a4ec318070f3ff4, type: 3}
   timeStep: 0.01
   gravityForce: -9.81
-  dampingForce: 0.3
-  targetDensity: 5.2
-  nearPreasureMultiplier: 50
-  preasureMultiplier: 27.44
+  dampingForce: 0.6
+  targetDensity: 15
+  nearPreasureMultiplier: 75
+  preasureMultiplier: 800
   viscosityStrength: 0.3
-  maxSpeed: 35
+  maxSpeed: 30
   particleMaterial: {fileID: 2100000, guid: 559085179ed2ed941a6bcd5807aa06c8, type: 2}
   particleMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   particleRadius: 0.6

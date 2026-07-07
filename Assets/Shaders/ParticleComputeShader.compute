@@ -20,8 +20,6 @@ struct Particle
 
     float3 velocity;
 
-    float3 acceleration;
-
     float density;
     float preasure;
 
@@ -69,6 +67,14 @@ float DensityKernelFunction(float distance)
 
 
 }
+float NearDensityKernelFunction(float distance)
+{
+    float cubedDens = 1.0f-(distance/_smoothingRadius);
+    return cubedDens*cubedDens*cubedDens;
+
+}
+
+
 uint2 getCellPos(float3 pos){    
     pos.x += _halfWidth;
     pos.y += _halfHeight;
@@ -134,6 +140,7 @@ void UpdateCells(uint3 id : SV_DispatchThreadID){
 void ApplyGravity(uint3 id : SV_DispatchThreadID){
     if(id.x>=_particleCount)
         return;
+
     particles[id.x].velocity += float3(0,_gravityForce,0) * _deltaTime;
     particles[id.x].lastPosition = particles[id.x].position;
     particles[id.x].position += _deltaTime * particles[id.x].velocity;
@@ -159,46 +166,40 @@ void CalculateDensity(uint3 id : SV_DispatchThreadID){
     if(id.x>=_particleCount)
         return;
     float densitySum = 0.0;
-    
-    float2 directions[] = {
-    float2(-_smoothingRadius,-_smoothingRadius),
-    float2(0,-_smoothingRadius),
-    float2(_smoothingRadius,-_smoothingRadius),
+    float nearDensitySum = 0.0;
+    int2 centerCell = (int2)getCellPos(particles[id.x].position);
+    for(int offsetX = -1; offsetX <= 1; offsetX++)
+    {
+        for(int offsetY = -1; offsetY <= 1; offsetY++)
+        {
+            int2 cell2D = centerCell + int2(offsetX, offsetY);
 
-    float2(-_smoothingRadius,0),
-    float2(0,0),
-    float2(_smoothingRadius,0),
-
-    float2(-_smoothingRadius,_smoothingRadius),
-    float2(0,_smoothingRadius),
-    float2(_smoothingRadius,_smoothingRadius),
-    };
-
-    //loop over neighboring cells.
-    for(uint i =0; i < 9; i ++){
-        uint2 cell2D = getCellPos(particles[id.x].position + float3(directions[i].x, directions[i].y, 0));
-
-        if (cell2D.x < 0 || cell2D.x >= _gridWidth || cell2D.y < 0 || cell2D.y >= _gridHeight) 
-            continue;
-        //if particle outside allowed range
-        uint key = cell2D.x + cell2D.y * _gridWidth;        
-        uint maxCells = (uint)((_halfWidth * 2.0)/_smoothingRadius) * (uint)((_halfHeight * 2.0)/_smoothingRadius);
-        if (key < 0 || key >= maxCells) continue;
-
-        //start going over particels
-        uint j = cellStarts[key];
-        while (j >= 0 && j < _particleCount && flatCell[j].x == key){
-            uint actualI = flatCell[j].y;
-            j++;
-
-            float dist = dist3(particles[id.x].position,particles[actualI].position);
-            if (dist > _smoothingRadius)
+            if (cell2D.x < 0 || cell2D.x >= (int)_gridWidth || cell2D.y < 0 || cell2D.y >= (int)_gridHeight) 
                 continue;
-            densitySum += DensityKernelFunction(dist);
+
+            uint key = (uint)(cell2D.x + cell2D.y * (int)_gridWidth);        
+            uint maxCells = (uint)((_halfWidth * 2.0)/_smoothingRadius) * (uint)((_halfHeight * 2.0)/_smoothingRadius);
+            
+            if (key < 0 || key >= maxCells) continue;
+
+            uint j = cellStarts[key];
+            while (j >= 0 && j < _particleCount && flatCell[j].x == key){
+                uint actualI = flatCell[j].y;
+                j++;
+
+                float dist = dist3(particles[id.x].position,particles[actualI].position);
+                if (dist > _smoothingRadius)
+                    continue;
+                nearDensitySum +=NearDensityKernelFunction(dist);
+                densitySum += DensityKernelFunction(dist);
+            }
         }
     }
+    
+    particles[id.x].nearDensity = nearDensitySum;
     particles[id.x].density = densitySum;
     particles[id.x].preasure = max(0.0f, _preasureMultiplier * (densitySum - _targetDensity));
+    particles[id.x].nearPreasure = max(0.0f, _nearPreasureMultiplier * nearDensitySum);
 
 
 }
@@ -209,57 +210,51 @@ void DensityRelaxationDisplacement(uint3 id : SV_DispatchThreadID){
         return;
     float3 displacement = float3(0,0,0);
 
-    float2 directions[] = {
-    float2(-_smoothingRadius,-_smoothingRadius),
-    float2(0,-_smoothingRadius),
-    float2(_smoothingRadius,-_smoothingRadius),
+    int2 centerCell = (int2)getCellPos(particles[id.x].position);
+    for(int offsetX = -1; offsetX <= 1; offsetX++)
+    {
+        for(int offsetY = -1; offsetY <= 1; offsetY++)
+        {
 
-    float2(-_smoothingRadius,0),
-    float2(0,0),
-    float2(_smoothingRadius,0),
+            int2 cell2D = centerCell + int2(offsetX, offsetY);
 
-    float2(-_smoothingRadius,_smoothingRadius),
-    float2(0,_smoothingRadius),
-    float2(_smoothingRadius,_smoothingRadius),
-    };
-
-    //loop over neighboring cells.
-    for(uint i =0; i < 9; i ++){
-        uint2 cell2D = getCellPos(particles[id.x].position + float3(directions[i].x, directions[i].y, 0));
-
-        if (cell2D.x < 0 || cell2D.x >= _gridWidth || cell2D.y < 0 || cell2D.y >= _gridHeight) 
-            continue;
-        //if particle outside allowed range
-        uint key = cell2D.x + cell2D.y * _gridWidth;        
-        uint maxCells = (uint)((_halfWidth * 2.0)/_smoothingRadius) * (uint)((_halfHeight * 2.0)/_smoothingRadius);
-        if (key < 0 || key >= maxCells) continue;
-
-        //start going over particels
-        uint j = cellStarts[key];
-        while (j >= 0 && j < _particleCount && flatCell[j].x == key){
-            uint actualI = flatCell[j].y;
-           
-            j++;
-            if(id.x == actualI)
+            if (cell2D.x < 0 || cell2D.x >= (int)_gridWidth || cell2D.y < 0 || cell2D.y >= (int)_gridHeight) 
                 continue;
-            float dist = dist3(particles[id.x].position,particles[actualI].position);
-            if (dist > _smoothingRadius)
-                continue;
-            float t2 = _deltaTime * _deltaTime;
-            float3 rHat;
-            if (0.001f>dist){
-                dist = 0.001;
-                float2 randDir = float2(randomRange(float2(id.x, actualI)), randomRange(float2(actualI, id.x)));
-                rHat = float3(randDir.x,randDir.y,0);    
 
+            uint key = (uint)(cell2D.x + cell2D.y * (int)_gridWidth);        
+            uint maxCells = (uint)((_halfWidth * 2.0)/_smoothingRadius) * (uint)((_halfHeight * 2.0)/_smoothingRadius);
+            
+            if (key < 0 || key >= maxCells) continue;
+
+            uint j = cellStarts[key];
+            while (j >= 0 && j < _particleCount && flatCell[j].x == key){
+                uint actualI = flatCell[j].y;
+            
+                j++;
+                if(id.x == actualI)
+                    continue;
+                float dist = dist3(particles[id.x].position,particles[actualI].position);
+                if (dist > _smoothingRadius)
+                    continue;
+                float t2 = _deltaTime * _deltaTime;
+                float3 rHat;
+                if (0.0001f>dist){
+                    dist = 0.001;
+                    float2 randDir = float2(randomRange(float2(id.x, actualI)), randomRange(float2(actualI, id.x)));
+                    rHat = float3(randDir.x,randDir.y,0);    
+
+                }
+                else
+                    rHat = normalize(particles[id.x].position-particles[actualI].position);
+                float3 sharedPreasure = (particles[id.x].preasure + particles[actualI].preasure)/2;
+                float3 sharedNearPreasure = (particles[id.x].nearPreasure + particles[actualI].nearPreasure)/2;
+                float dist_h = 1-(dist/_smoothingRadius);
+                float3 currDisplacement = t2*(sharedPreasure*dist_h+sharedNearPreasure*dist_h*dist_h)*rHat;
+                displacement+=currDisplacement;
             }
-            else
-                rHat = normalize(particles[id.x].position-particles[actualI].position);
-            float3 currDisplacement = t2*particles[id.x].preasure*(1-(dist/_smoothingRadius))*rHat;
-            displacement+=currDisplacement;
         }
     }
-    particles[id.x].position +=displacement;
+    particles[id.x].position +=ClampMagnitude(displacement,_particleRadius*0.5f);
 
 
 }
@@ -280,18 +275,34 @@ void SimulationStep (uint3 id : SV_DispatchThreadID)
     if(id.x>=_particleCount)
         return;
 
+    bool hitWallX = false;
+    bool hitWallY = false;
+
     if (abs(particles[id.x].position.y) + _particleRadius > _halfHeight)
     {
         particles[id.x].position.y = sign(particles[id.x].position.y) * (_halfHeight - _particleRadius);
+        hitWallY = true;
     }
 
     if (abs(particles[id.x].position.x) + _particleRadius > _halfWidth)
     {
         particles[id.x].position.x = sign(particles[id.x].position.x) * (_halfWidth - _particleRadius);
-        
+        hitWallX = true;
     }
     positions[id.x] = particles[id.x].position;
     particles[id.x].velocity = (particles[id.x].position-particles[id.x].lastPosition)/_deltaTime;
+
+    if(hitWallX)
+        {
+            particles[id.x].velocity.x *= -_dampingForce; 
+        }
+
+    if(hitWallY)
+    {
+        particles[id.x].velocity.y *= -_dampingForce; 
+    }
+
+
     ColorParticles(id.x);
 }
 
