@@ -5,11 +5,15 @@ using UnityEngine;
 
 public class RadixSort : MonoBehaviour
 {
+    public ComputeShader computeShader;
+    public ComputeBuffer arrayBuffer;
     public List<int> nums;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        arrayBuffer = new ComputeBuffer(nums.Count,sizeof(int));
         int[] arr= nums.ToArray();
+        arrayBuffer.SetData(arr);
         Radix(ref arr);
         foreach(int i in arr)
             Debug.Log(i);

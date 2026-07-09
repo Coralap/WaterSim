@@ -225,7 +225,7 @@ Camera:
   far clip plane: 1000
   field of view: 34
   orthographic: 1
-  orthographic size: 160
+  orthographic size: 400
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -272,7 +272,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1010216995
 Transform:
   m_ObjectHideFlags: 0
@@ -300,21 +300,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 46a9f7d5674a4d347915e852602ca97a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  sceneCamera: {fileID: 519420031}
   particleComputeShader: {fileID: 7200000, guid: 0980185ddefd7a744a4ec318070f3ff4, type: 3}
-  timeStep: 0.01
+  timeStep: 0.016
+  subSteps: 1
   gravityForce: -9.81
-  dampingForce: 0.6
-  targetDensity: 15
-  nearPreasureMultiplier: 75
+  dampingForce: 0.4
+  smoothingRadiusMultiplier: 6
+  targetDensity: 4.5
+  nearPreasureMultiplier: 25
   preasureMultiplier: 800
-  viscosityStrength: 0.3
-  maxSpeed: 30
+  viscositySigmoid: 0.05
+  viscosityBeta: 0.04
+  maxSpeed: 25
   particleMaterial: {fileID: 2100000, guid: 559085179ed2ed941a6bcd5807aa06c8, type: 2}
   particleMesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
   particleRadius: 0.6
-  areaWidth: 550
-  aeraHeight: 300
-  particleCount: 16384
+  particleCount: 131072
 --- !u!1 &1287449892
 GameObject:
   m_ObjectHideFlags: 0
@@ -331,7 +333,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1287449894
 Transform:
   m_ObjectHideFlags: 0

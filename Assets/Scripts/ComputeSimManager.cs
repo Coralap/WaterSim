@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class ComputeSimManager : MonoBehaviour
 {
+    public Camera sceneCamera;
     [Header("Compute")]
     [SerializeField]
     private ComputeShader particleComputeShader;
@@ -20,7 +21,8 @@ public class ComputeSimManager : MonoBehaviour
     [Header("Constants")]
     [SerializeField]
     private float timeStep= 0.3f;
-
+    [SerializeField]
+    private int subSteps= 3;
     [SerializeField]
     private float gravityForce= -9.81f;
     [SerializeField]
@@ -30,6 +32,8 @@ public class ComputeSimManager : MonoBehaviour
     private float smoothingRadius=5f;
 
     [SerializeField]
+    private float smoothingRadiusMultiplier= 3f;
+    [SerializeField]
     float targetDensity=10f;
 
     [SerializeField] float nearPreasureMultiplier = 15f;
@@ -37,8 +41,10 @@ public class ComputeSimManager : MonoBehaviour
     float preasureMultiplier=1500f;
 
     [SerializeField]
-    float viscosityStrength = 0.2f; 
+    float viscositySigmoid = 0.2f; 
 
+    [SerializeField]
+    float viscosityBeta = 0.2f; 
     [Header("Render Settings")]
     [SerializeField]
     float maxSpeed;
@@ -50,11 +56,9 @@ public class ComputeSimManager : MonoBehaviour
     [SerializeField] private float particleRadius;
 
     [Header("Area Settings")]
-    [SerializeField]
-    private float areaWidth = 200f;
+    private float areaWidth;
 
-    [SerializeField]
-    private float aeraHeight = 100f;
+    private float aeraHeight;
 
     float blockWidth;  
     float blockHeight;  
@@ -80,17 +84,19 @@ public class ComputeSimManager : MonoBehaviour
 
     int simKernel;
     int updateCellsKernel;
-
+    int viscosityKernel;
 
     void Start()
     {
+        aeraHeight = sceneCamera.orthographicSize*2;
+        areaWidth = aeraHeight * 16.0f/9.0f;
         //initialize buffers with size of particles.
         particleBuffer = new ComputeBuffer(particleCount,52);
         positionBuffer = new ComputeBuffer(particleCount,12);
 
         colorBuffer = new ComputeBuffer(particleCount,16);
 
-        smoothingRadius = particleRadius*6;
+        smoothingRadius = particleRadius*smoothingRadiusMultiplier;
 
         flatCellBuffer = new ComputeBuffer(particleCount,sizeof(int)*2);
         IdToCellBuffer = new ComputeBuffer(particleCount,sizeof(int));
@@ -107,55 +113,61 @@ public class ComputeSimManager : MonoBehaviour
 
         particleComputeShader.SetInt("_particleCount",particleCount);
 
-        halfHeight = aeraHeight/2;
-        halfWidth = areaWidth/2;
+halfHeight = aeraHeight / 2;
+        halfWidth = areaWidth / 2;
         particles = new Particle[particleCount];
         positions = new Vector3[particleCount];
         colors = new Vector4[particleCount];
+        
         int i = 0;
 
+        int halfCount = particleCount / 2;
 
-        int columns = Mathf.CeilToInt(Mathf.Sqrt(particleCount));
-        int rows = Mathf.CeilToInt((float)particleCount / columns);
+        int blockColumns = Mathf.CeilToInt(Mathf.Sqrt(halfCount));
+        int blockRows = Mathf.CeilToInt((float)halfCount / blockColumns);
 
-        float initialSpacing = particleRadius * 2f; 
-        blockWidth = columns * initialSpacing;
-        blockHeight = rows * initialSpacing;
+        float initialSpacing = particleRadius * 2.1f; 
 
-        float spacingX = blockWidth / Mathf.Max(1, columns - 1);
-        float spacingY = blockHeight / Mathf.Max(1, rows - 1);
+        float blockWidth = blockColumns * initialSpacing;
+        float blockHeight = blockRows * initialSpacing;
 
-        float startX = -blockWidth / 2f;
-        float startY = -blockHeight / 2f;
+        float leftStartX = -halfWidth + particleRadius;
+        float rightStartX = halfWidth - blockWidth - particleRadius;
+        float startY = -halfHeight + particleRadius;
 
-        for (int col = 0; col < columns; col++)
+        for (int p = 0; p < particleCount; p++)
         {
-            for (int row = 0; row < rows; row++)
+            bool isLeftSide = p < halfCount;
+            int localIndex = isLeftSide ? p : p - halfCount;
+
+            int col = localIndex % blockColumns;
+            int row = localIndex / blockColumns;
+
+            float posX = (isLeftSide ? leftStartX : rightStartX) + (col * initialSpacing);
+            float posY = startY + (row * initialSpacing);
+
+            // random movment
+            posX += UnityEngine.Random.Range(-0.02f, 0.02f);
+            posY += UnityEngine.Random.Range(-0.02f, 0.02f);
+
+            Vector3 newPos = new Vector3(posX, posY, 0f);
+
+            particles[p] = new Particle
             {
-                if (i >= particleCount) break;
+                position = newPos,
+                velocity = Vector3.zero,
+                density = 0f,
+                preasure = 0f,
+                nearDensity = 0f,
+                nearPreasure = 0f,
+                lastPosition = newPos
+            };
+            positions[p] = particles[p].position;
 
-                float posX = startX + (col * spacingX);
-                float posY = startY + (row * spacingY);
-                Vector3 newPos = new Vector3(posX, posY, 0f);
-                particles[i] = new Particle
-                {
-                    position = newPos,
-                    velocity = Vector3.zero,
-                    density = 0f,
-                    preasure = 0f,
-                    nearDensity = 0f,
-                    nearPreasure = 0f,
-                    lastPosition = newPos
-                };
-                positions[i] = particles[i].position;
-
-                IdToCellArray[i] =0;
-                flatCellArray[i] = new Vector2Int(0,i);
-
-
-                i++;
-            }
+            IdToCellArray[p] = 0;
+            flatCellArray[p] = new Vector2Int(0, p);
         }
+        i = particleCount;
         //handle leftovers
         while (i < particleCount)
         {
@@ -170,6 +182,7 @@ public class ComputeSimManager : MonoBehaviour
         {
             cellStartsArray[j] = 0;
         }
+        
         //set buffer data and compute kernel id's
         cellStartsBuffer.SetData(cellStartsArray);
         IdToCellBuffer.SetData(IdToCellArray);
@@ -190,6 +203,7 @@ public class ComputeSimManager : MonoBehaviour
         simKernel = particleComputeShader.FindKernel("SimulationStep");
 
         updateCellsKernel = particleComputeShader.FindKernel("UpdateCells");
+        viscosityKernel = particleComputeShader.FindKernel("ApplyViscosity");
 
 
 
@@ -201,6 +215,7 @@ public class ComputeSimManager : MonoBehaviour
         particleComputeShader.SetBuffer(gravityKernel, "particles", particleBuffer);
         particleComputeShader.SetBuffer(relaxKernel, "particles", particleBuffer);
         particleComputeShader.SetBuffer(simKernel, "particles", particleBuffer);
+        particleComputeShader.SetBuffer(viscosityKernel, "particles", particleBuffer);
 
 
 
@@ -209,6 +224,9 @@ public class ComputeSimManager : MonoBehaviour
 
         particleComputeShader.SetBuffer(relaxKernel, "flatCell", flatCellBuffer);
         particleComputeShader.SetBuffer(relaxKernel, "IdToCell", IdToCellBuffer);
+
+        particleComputeShader.SetBuffer(viscosityKernel, "flatCell", flatCellBuffer);
+        particleComputeShader.SetBuffer(viscosityKernel, "IdToCell", IdToCellBuffer);
 
         particleComputeShader.SetBuffer(simKernel, "positions", positionBuffer);
 
@@ -232,18 +250,10 @@ public class ComputeSimManager : MonoBehaviour
     particleComputeShader.SetFloat("_nearPreasureMultiplier", nearPreasureMultiplier);
         particleComputeShader.SetFloat("_smoothingRadius",smoothingRadius);
         particleComputeShader.SetFloat("_targetDensity",targetDensity);
-        particleComputeShader.SetFloat("_viscosityStrength",viscosityStrength);
+        particleComputeShader.SetFloat("_viscositySigmoid",viscositySigmoid);
+        particleComputeShader.SetFloat("_viscosityBeta",viscosityBeta);
         particleComputeShader.SetFloat("_preasureMultiplier",preasureMultiplier);
-        if (timeStep <= 0)
-        {
-            particleComputeShader.SetFloat("_deltaTime",Time.deltaTime);
 
-        }
-        else
-        {
-            particleComputeShader.SetFloat("_deltaTime",timeStep);
-
-        }
         particleComputeShader.SetFloat("_dampingForce",dampingForce);
         particleComputeShader.SetFloat("_gravityForce",gravityForce);
         particleComputeShader.SetFloat("_particleRadius",particleRadius);
@@ -258,16 +268,23 @@ public class ComputeSimManager : MonoBehaviour
 
         particleComputeShader.SetBuffer(densityKernel, "cellStarts", cellStartsBuffer);
         particleComputeShader.SetBuffer(relaxKernel, "cellStarts", cellStartsBuffer);
+        particleComputeShader.SetBuffer(viscosityKernel, "cellStarts", cellStartsBuffer);
+        float subDeltaTime = timeStep / subSteps;
+        particleComputeShader.SetFloat("_deltaTime", subDeltaTime);
 
-        particleComputeShader.Dispatch(gravityKernel,groups,1,1);
-        particleComputeShader.Dispatch(updateCellsKernel,groups,1,1);
-        OrganzieCells();
+        for (int step = 0; step < subSteps; step++)
+        {
+            particleComputeShader.Dispatch(gravityKernel, groups, 1, 1);
+            particleComputeShader.Dispatch(viscosityKernel, groups, 1, 1);
+            
+            particleComputeShader.Dispatch(updateCellsKernel, groups, 1, 1);
+            OrganzieCells(); 
+            
+            particleComputeShader.Dispatch(densityKernel, groups, 1, 1);
+            particleComputeShader.Dispatch(relaxKernel, groups, 1, 1);
+            particleComputeShader.Dispatch(simKernel, groups, 1, 1);
+        }
 
-        particleComputeShader.Dispatch(densityKernel,groups,1,1);
-
-        particleComputeShader.Dispatch(relaxKernel,groups,1,1);
-
-        particleComputeShader.Dispatch(simKernel,groups,1,1);
         particleMaterial.SetBuffer("colorBuffer", colorBuffer);
 
         particleMaterial.SetBuffer("particleBuffer", positionBuffer);

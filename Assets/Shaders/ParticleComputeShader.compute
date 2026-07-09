@@ -4,7 +4,7 @@
 #pragma kernel DensityRelaxationDisplacement
 #pragma kernel SortCells
 #pragma kernel UpdateCells
-
+#pragma kernel ApplyViscosity
 
 #pragma kernel SimulationStep
 
@@ -29,7 +29,10 @@ struct Particle
 uint _particleCount;
 float _smoothingRadius;
 float _targetDensity;
-float _viscosityStrength;
+
+float _viscositySigmoid;
+float _viscosityBeta;
+
 float _preasureMultiplier;
 float _deltaTime;
 float _dampingForce;
@@ -142,6 +145,54 @@ void ApplyGravity(uint3 id : SV_DispatchThreadID){
         return;
 
     particles[id.x].velocity += float3(0,_gravityForce,0) * _deltaTime;
+
+
+}
+
+[numthreads(64,1,1)]
+
+void ApplyViscosity(uint3 id : SV_DispatchThreadID){
+ if(id.x>=_particleCount)
+        return;
+    float3 sumVel = float3(0,0,0);
+    int2 centerCell = (int2)getCellPos(particles[id.x].position);
+    for(int offsetX = -1; offsetX <= 1; offsetX++)
+    {
+        for(int offsetY = -1; offsetY <= 1; offsetY++)
+        {
+            int2 cell2D = centerCell + int2(offsetX, offsetY);
+
+            if (cell2D.x < 0 || cell2D.x >= (int)_gridWidth || cell2D.y < 0 || cell2D.y >= (int)_gridHeight) 
+                continue;
+
+            uint key = (uint)(cell2D.x + cell2D.y * (int)_gridWidth);        
+            uint maxCells = (uint)((_halfWidth * 2.0)/_smoothingRadius) * (uint)((_halfHeight * 2.0)/_smoothingRadius);
+            
+            if (key < 0 || key >= maxCells) continue;
+
+            uint j = cellStarts[key];
+            while (j >= 0 && j < _particleCount && flatCell[j].x == key){
+                uint actualI = flatCell[j].y;
+                j++;
+
+                float dist = dist3(particles[id.x].position,particles[actualI].position);
+                float q = dist/_smoothingRadius;
+                if (q>=1)
+                    continue;
+                float3 rHat = normalize(particles[id.x].position-particles[actualI].position);
+
+                float inwardRadialVelocity = dot(particles[id.x].velocity - particles[actualI].velocity, rHat);
+                if(inwardRadialVelocity>0){
+                    float I = _deltaTime * _deltaTime * (1 - q) * (_viscositySigmoid * inwardRadialVelocity + _viscosityBeta * inwardRadialVelocity * inwardRadialVelocity);
+                    sumVel-=I*rHat;
+
+
+                }
+
+            }
+        }
+    }
+    particles[id.x].velocity+=sumVel;
     particles[id.x].lastPosition = particles[id.x].position;
     particles[id.x].position += _deltaTime * particles[id.x].velocity;
 
@@ -241,13 +292,12 @@ void DensityRelaxationDisplacement(uint3 id : SV_DispatchThreadID){
                 if (0.0001f>dist){
                     dist = 0.001;
                     float2 randDir = float2(randomRange(float2(id.x, actualI)), randomRange(float2(actualI, id.x)));
-                    rHat = float3(randDir.x,randDir.y,0);    
-
+                    rHat = normalize(float3(randDir.x, randDir.y, 0));
                 }
                 else
                     rHat = normalize(particles[id.x].position-particles[actualI].position);
-                float3 sharedPreasure = (particles[id.x].preasure + particles[actualI].preasure)/2;
-                float3 sharedNearPreasure = (particles[id.x].nearPreasure + particles[actualI].nearPreasure)/2;
+                float sharedPreasure = (particles[id.x].preasure + particles[actualI].preasure) / 2.0f;
+                float sharedNearPreasure = (particles[id.x].nearPreasure + particles[actualI].nearPreasure) / 2.0f;
                 float dist_h = 1-(dist/_smoothingRadius);
                 float3 currDisplacement = t2*(sharedPreasure*dist_h+sharedNearPreasure*dist_h*dist_h)*rHat;
                 displacement+=currDisplacement;
@@ -277,25 +327,25 @@ void SimulationStep (uint3 id : SV_DispatchThreadID)
 
     bool hitWallX = false;
     bool hitWallY = false;
-
+    //floor and ceiling
     if (abs(particles[id.x].position.y) + _particleRadius > _halfHeight)
     {
-        particles[id.x].position.y = sign(particles[id.x].position.y) * (_halfHeight - _particleRadius);
+        particles[id.x].position.y = sign(particles[id.x].position.y) * (_halfHeight - _particleRadius-0.01f);
         hitWallY = true;
     }
-
+    //walls
     if (abs(particles[id.x].position.x) + _particleRadius > _halfWidth)
     {
-        particles[id.x].position.x = sign(particles[id.x].position.x) * (_halfWidth - _particleRadius);
+        particles[id.x].position.x = sign(particles[id.x].position.x) * (_halfWidth - _particleRadius-0.01f);
         hitWallX = true;
     }
     positions[id.x] = particles[id.x].position;
     particles[id.x].velocity = (particles[id.x].position-particles[id.x].lastPosition)/_deltaTime;
 
     if(hitWallX)
-        {
+    {
             particles[id.x].velocity.x *= -_dampingForce; 
-        }
+    }
 
     if(hitWallY)
     {
