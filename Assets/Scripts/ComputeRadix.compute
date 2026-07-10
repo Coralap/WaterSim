@@ -1,11 +1,52 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel RadixSort
+#pragma kernel Count
 
 
-RWStructuredBuffer<int> arr;
+RWStructuredBuffer<int> InputArr;
+RWStructuredBuffer<int> CountPerGroup;
+
+int _exponent;
+int _len;
+
+groupshared uint shared_counts[64];
+
 
 [numthreads(64,1,1)]
-void RadixSort (uint3 id : SV_DispatchThreadID)
+void Count(uint3 id : SV_DispatchThreadID, uint groupThreadID : SV_GroupThreadID, uint groupId : SV_GroupID)
+{
+    uint bit = 0;
+    if (id.x < (uint)_len)
+    {
+        bit = (InputArr[id.x] & _exponent) ? 1 : 0; 
+    }
+    shared_counts[groupThreadID] = (bit == 0) ? 1 : 0;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 32; stride > 0; stride /= 2)
+    {
+        if (groupThreadID < stride)
+        {
+            shared_counts[groupThreadID] += shared_counts[groupThreadID + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupThreadID == 0)
+    {
+        CountPerGroup[groupId.x] = shared_counts[0]; 
+    }
+}
+[numthreads(64,1,1)]
+void PrefixSum(uint3 id : SV_DispatchThreadID, uint groupThreadID : SV_GroupThreadID, uint groupId : SV_GroupID)
+{
+     
+
+
+
+
+}
+
+[numthreads(64,1,1)]
+void RadixSort (uint3 id : SV_DispatchThreadID,uint3 groupId : SV_GroupID,uint3 threadID : SV_GroupThreadID)
 {
 
 }
