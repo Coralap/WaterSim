@@ -7,43 +7,83 @@ RWStructuredBuffer<int> CountPerGroup;
 
 int _exponent;
 int _len;
+int _groupCount;
 
 groupshared uint shared_counts[64];
-
+groupshared int temp[128];
 
 [numthreads(64,1,1)]
-void Count(uint3 id : SV_DispatchThreadID, uint groupThreadID : SV_GroupThreadID, uint groupId : SV_GroupID)
+void Count(uint3 id : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
     uint bit = 0;
     if (id.x < (uint)_len)
     {
         bit = (InputArr[id.x] & _exponent) ? 1 : 0; 
     }
-    shared_counts[groupThreadID] = (bit == 0) ? 1 : 0;
+    shared_counts[groupThreadID.x] = (bit == 0) ? 1 : 0;
     GroupMemoryBarrierWithGroupSync();
     for (uint stride = 32; stride > 0; stride /= 2)
     {
-        if (groupThreadID < stride)
+        if (groupThreadID.x < stride)
         {
-            shared_counts[groupThreadID] += shared_counts[groupThreadID + stride];
+            shared_counts[groupThreadID.x] += shared_counts[groupThreadID.x + stride];
         }
         GroupMemoryBarrierWithGroupSync();
     }
 
-    if (groupThreadID == 0)
+    if (groupThreadID.x == 0)
     {
         CountPerGroup[groupId.x] = shared_counts[0]; 
     }
 }
 [numthreads(64,1,1)]
-void PrefixSum(uint3 id : SV_DispatchThreadID, uint groupThreadID : SV_GroupThreadID, uint groupId : SV_GroupID)
+void PrefixSum(uint3 id : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
-     
+    //load global buffer to a more local groupshared array
+    uint groupBase = groupId.x*128; 
+    uint localA = 2 * groupThreadID.x;
+    uint localB = localA + 1;
+    temp[localA] = CountPerGroup[groupBase + localA];
+    temp[localB] = CountPerGroup[groupBase + localB];
+    GroupMemoryBarrierWithGroupSync();
+    //the up sweep / reduction. saves final value in each part inside 127th index of temp
+    uint activeThreads = 64;
+    for(uint stride=1;stride<=64;stride*=2){
+        if(groupThreadID.x<activeThreads){
+            uint rightIndex = stride * (2 * groupThreadID.x + 2) - 1;
+            uint leftIndex = rightIndex-stride;
+            temp[rightIndex] += temp[leftIndex];
+        }
 
 
+        activeThreads>>=1;
+        GroupMemoryBarrierWithGroupSync();
+    }
+    //reset the last element to zero by the rules of blelloch scan
+    if (groupThreadID.x == 0) {
+        temp[127] = 0;
+    }
+    activeThreads=1;
+    GroupMemoryBarrierWithGroupSync();
+    //down sweep on temp
+    for(uint stride=64;stride>=1;stride/=2){
+        if(groupThreadID.x<activeThreads){
+            uint rightIndex = stride * (2 * groupThreadID.x + 2) - 1;
+            uint leftIndex = rightIndex-stride;
+            uint leftVal = temp[leftIndex];
+            temp[leftIndex] = temp[rightIndex];
+            temp[rightIndex] += leftVal;
+        }
+        activeThreads<<=1;
+        GroupMemoryBarrierWithGroupSync();
+    }
 
+    CountPerGroup[groupBase + localA]=temp[localA];
+    CountPerGroup[groupBase + localB]=temp[localB];
+    GroupMemoryBarrierWithGroupSync();
 
 }
+
 
 [numthreads(64,1,1)]
 void RadixSort (uint3 id : SV_DispatchThreadID,uint3 groupId : SV_GroupID,uint3 threadID : SV_GroupThreadID)
