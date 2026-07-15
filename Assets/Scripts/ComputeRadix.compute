@@ -3,14 +3,18 @@
 
 
 RWStructuredBuffer<int> InputArr;
+RWStructuredBuffer<int> OutputArr;
+
 RWStructuredBuffer<int> CountPerGroup;
 
 int _exponent;
 int _len;
 int _groupCount;
-
-groupshared uint shared_counts[64];
+int _totalZeros;
+groupshared int shared_counts[64];
 groupshared int temp[128];
+
+groupshared int localArr[64];
 
 [numthreads(64,1,1)]
 void Count(uint3 id : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupId : SV_GroupID)
@@ -86,7 +90,28 @@ void PrefixSum(uint3 id : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThr
 
 
 [numthreads(64,1,1)]
-void RadixSort (uint3 id : SV_DispatchThreadID,uint3 groupId : SV_GroupID,uint3 threadID : SV_GroupThreadID)
+void Scatter (uint3 id : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupId : SV_GroupID)
 {
+    uint globalIndex = groupId.x * 64 + groupThreadID.x;
+    if (globalIndex < (uint)_len)
+    {
+        localArr[groupThreadID.x] = InputArr[globalIndex];
+    }
+    else
+    {
+        localArr[groupThreadID.x] = 0; 
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if (globalIndex >= (uint)_len) return;
+    int localOffset=0;
+    uint bit = (localArr[groupThreadID.x] & _exponent) ? 1 : 0;
+    for(int i =0; i<groupThreadID.x;i++){
+        uint currBit = (localArr[i] & _exponent) ? 1 : 0;
+        localOffset= currBit==bit ? localOffset+1 : localOffset;
+    }
 
+    uint newIndex = (bit == 0) 
+            ? localOffset + CountPerGroup[groupId.x] 
+            : _totalZeros + localOffset + (groupId.x * 64) - CountPerGroup[groupId.x];
+    OutputArr[newIndex] = localArr[groupThreadID.x];
 }
